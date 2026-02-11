@@ -914,7 +914,10 @@ static void test_conf_io_list(void)
 	      "server.edns-client-subnet\n"
 	      "server.answer-rotation\n"
 	      "server.automatic-acl\n"
-	      "server.dbus-event";
+	      "server.dbus-event\n"
+	      "server.enable-numa\n"
+	      "server.udp-async-req\n"
+	      "server.tcp-async-req";
 	ok(strcmp(ref, out) == 0, "compare result");
 
 	// List item options.
@@ -981,6 +984,9 @@ static const yp_item_t desc_server[] = {
 	{ C_ANS_ROTATION,         YP_TBOOL, YP_VNONE },
 	{ C_AUTO_ACL,             YP_TBOOL, YP_VNONE },
 	{ C_DBUS_EVENT,           YP_TOPT,  YP_VNONE },
+	{ C_ENABLE_NUMA,          YP_TBOOL, YP_VNONE },
+	{ C_UDP_ASYNC_REQS,       YP_TINT,  YP_VNONE },
+	{ C_TCP_ASYNC_REQS,       YP_TINT,  YP_VNONE },
 	{ NULL }
 };
 
