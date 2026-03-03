@@ -385,6 +385,7 @@ void *xdp_gun_thread(void *_ctx)
 
 	if (ctx->thread_id == 0) {
 		STATS_HDR(ctx);
+		fflush(stdout);
 	}
 
 	struct pollfd pfd = { knot_xdp_socket_fd(xsk), POLLIN, 0 };
@@ -765,6 +766,7 @@ void *xdp_gun_thread(void *_ctx)
 				if (!JSON_MODE(*ctx)) {
 					puts(STATS_SECTION_SEP);
 				}
+				fflush(stdout);
 				clear_stats(&global_stats);
 				ATOMIC_SET(stats_switch, STATS_SUM);
 			}
