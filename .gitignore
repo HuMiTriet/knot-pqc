@@ -103,3 +103,7 @@ Makefile.in
 
 # clang
 .qtc_clangd
+.cache/clangd/index
+tags
+GEMINI.md
+compile_commands.json
