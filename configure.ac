@@ -173,6 +173,25 @@ PKG_CHECK_MODULES([gnutls], [gnutls >= 3.6.10], [
 ], [
     AS_IF([test "$enable_redis" != "module"], [AC_MSG_ERROR([GnuTLS library not found])])
 ])
+
+# liboqs for PQC support
+AC_ARG_ENABLE([oqs],
+   AS_HELP_STRING([--enable-oqs=auto|yes|no], [enable liboqs for PQC support [default=no]]),
+   [], [enable_oqs=no])
+                                                                                             
+AS_IF([test "$enable_oqs" != "no"], [
+  PKG_CHECK_MODULES([liboqs], [liboqs], [
+    AC_DEFINE([ENABLE_OQS], [1], [Define to 1 to enable PQC support using liboqs])
+    enable_oqs=yes
+  ], [
+    AS_IF([test "$enable_oqs" = "yes"], [AC_MSG_ERROR([liboqs not found])])
+    enable_oqs=no
+  ])
+])
+AM_CONDITIONAL([ENABLE_OQS], [test "$enable_oqs" = "yes"])
+AC_SUBST([liboqs_CFLAGS])
+AC_SUBST([liboqs_LIBS])
+
 # PKCS11 support
 AC_ARG_ENABLE([pkcs11],
    AS_HELP_STRING([--enable-pkcs11=auto|yes|no], [Support PKCS #11 [default=auto]]),
@@ -844,6 +863,7 @@ result_msg_base="
     POSIX capabilities:     ${enable_cap_ng}
     PKCS #11 support:       ${enable_pkcs11}
     Ed448 support:          ${enable_ed448}
+    PQC support:            $(enable_oqs)
 
     Code coverage:          ${enable_code_coverage}
     Sanitizer:              ${with_sanitizer}

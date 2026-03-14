@@ -10,6 +10,10 @@
 #include "libdnssec/key/algorithm.h"
 #include "libdnssec/shared/shared.h"
 
+#ifdef ENABLE_OQS
+#include <oqs/sig.h>
+#endif /* ifdef ENABLE_OQS */
+
 /* -- internal ------------------------------------------------------------- */
 
 struct limits {
@@ -51,6 +55,24 @@ static const struct limits *get_limits(dnssec_key_algorithm_t algorithm)
 		.def = 456,
 	};
 
+	static const struct limits MLDSA44 = {
+		.min = 2560,
+		.max = 2560,
+		.def = 2560,
+	};
+
+	static const struct limits MLDSA65 = {
+		.min = 4032,
+		.max = 4032,
+		.def = 4032,
+	};
+
+	static const struct limits MLDSA87 = {
+		.min = 4896,
+		.max = 4896,
+		.def = 4896,
+	};
+
 	switch (algorithm) {
 	case DNSSEC_KEY_ALGORITHM_RSA_SHA1:
 	case DNSSEC_KEY_ALGORITHM_RSA_SHA1_NSEC3:
@@ -65,6 +87,14 @@ static const struct limits *get_limits(dnssec_key_algorithm_t algorithm)
 		return &ED25519;
 	case DNSSEC_KEY_ALGORITHM_ED448:
 		return &ED448;
+#ifdef ENABLE_OQS
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
+		return &MLDSA44;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
+		return &MLDSA65;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
+		return &MLDSA87;
+#endif /* ifdef ENABLE_OQS */
 	default:
 		return NULL;
 	}
@@ -89,10 +119,35 @@ gnutls_pk_algorithm_t algorithm_to_gnutls(dnssec_key_algorithm_t dnssec)
 	case DNSSEC_KEY_ALGORITHM_ED448:
 		return GNUTLS_PK_EDDSA_ED448;
 #endif
+#ifdef ENABLE_OQS
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
+		return GNUTLS_PK_MLDSA44;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
+		return GNUTLS_PK_MLDSA65;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
+		return GNUTLS_PK_MLDSA87;
+#endif /* ifdef MACRO */
+
 	default:
 		return GNUTLS_PK_UNKNOWN;
 	}
 }
+
+
+
+#ifdef ENABLE_OQS
+bool supported_pqc_algorithm(const gnutls_pk_algorithm_t algo) {
+	switch (algo) {
+	case GNUTLS_PK_MLDSA44:
+	case GNUTLS_PK_MLDSA65:
+	case GNUTLS_PK_MLDSA87:
+		return true;
+	default:
+		return false;
+	}
+}
+#endif /* ifdef ENABLE_OQS */
+
 
 /* -- public API ----------------------------------------------------------- */
 

@@ -28,6 +28,9 @@ typedef struct keystore_functions {
 	// private key access
 	int (*get_private)(void *ctx, const char *id, gnutls_privkey_t *key_ptr);
 	int (*set_private)(void *ctx, gnutls_privkey_t key);
+#ifdef ENABLE_OQS
+	int (*get_pqc_private)(void *ctx, const char *id, dnssec_binary_t *pubkey, dnssec_binary_t *privkey);
+#endif
 } keystore_functions_t;
 
 struct dnssec_keystore {

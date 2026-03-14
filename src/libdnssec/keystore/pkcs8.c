@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <oqs/common.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,12 @@
 #include "libdnssec/pem.h"
 #include "libdnssec/shared/shared.h"
 #include "libdnssec/shared/keyid_gnutls.h"
+
+#ifdef ENABLE_OQS
+#include <gnutls/gnutls.h>
+#include <oqs/sig.h>
+#include "libdnssec/key/algorithm.h"
+#endif /* ifdef ENABLE_OQS */
 
 #define DIR_INIT_MODE 0750
 
@@ -172,6 +179,87 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits,
 	assert(id);
 
 	// generate key
+#ifdef ENABLE_OQS
+	if (supported_pqc_algorithm(algorithm)) {
+		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm);
+
+		if (!alg_name) {
+			fprintf(stderr, "gnutls_pk_algorithm_get_name result in %s\n", alg_name);
+			return DNSSEC_ENOMEM;
+		}
+
+		OQS_SIG *sig = OQS_SIG_new(alg_name);
+
+		uint8_t *pub = malloc(sig->length_public_key);
+		uint8_t *sec = malloc(sig->length_secret_key);
+		if (!pub || !sec) {
+			free(pub); free(sec);
+			OQS_SIG_free(sig);
+			return DNSSEC_ENOMEM;
+		}
+
+		if (OQS_SIG_keypair(sig, pub, sec) != OQS_SUCCESS) {
+			free(pub); free(sec);
+			OQS_SIG_free(sig);
+			return DNSSEC_KEY_GENERATE_ERROR;
+		}
+
+		uint8_t hash[20];
+		gnutls_hash_fast(GNUTLS_DIG_SHA1, pub, sig->length_public_key, hash);
+
+		char *_id = malloc(41);
+		if (!_id) {
+			free(pub); free(sec); OQS_SIG_free(sig);
+			return DNSSEC_ENOMEM;
+		}
+		for(int i=0; i<20; i++) sprintf(_id + 2*i, "%02x", hash[i]);
+
+		uint32_t alg_id = algorithm;
+		uint32_t pub_len = sig->length_public_key;
+		uint32_t sec_len = sig->length_secret_key;
+		size_t blob_sz = 12 + pub_len + sec_len;
+
+		dnssec_binary_t blob = { .data = malloc(blob_sz), .size = blob_sz };
+
+		if (!blob.data) {
+			free(pub); free(sec); free(_id); OQS_SIG_free(sig);
+			return DNSSEC_ENOMEM;
+		}
+		uint8_t *ptr = blob.data;
+		memcpy(ptr, &alg_id, 4); ptr += 4;
+		memcpy(ptr, &pub_len, 4); ptr += 4;
+		memcpy(ptr, pub, pub_len); ptr += pub_len;
+		memcpy(ptr, &sec_len, 4); ptr += 4;
+		memcpy(ptr, sec, sec_len);
+
+		free(pub); free(sec); OQS_SIG_free(sig);
+
+		dnssec_binary_t b64 = { 0 };
+		int r = dnssec_binary_to_base64(&blob, &b64);
+		dnssec_binary_free(&blob);
+		if (r != DNSSEC_EOK) {
+			free(_id);
+			return r;
+		}
+
+		const char *header = "-----BEGIN OQS PRIVATE KEY-----\n";
+		const char *footer = "-----END OQS PRIVATE KEY-----\n";
+		pem->size = strlen(header) + b64.size + strlen(footer) + 1;
+		pem->data = malloc(pem->size);
+		if (!pem->data) {
+			dnssec_binary_free(&b64);
+			free(_id);
+			return DNSSEC_ENOMEM;
+		}
+		snprintf((char *)pem->data, pem->size, "%s%.*s\n%s", header, (int)b64.size, b64.data, footer);
+		pem->size -= 1; // remove null byte
+		
+		dnssec_binary_free(&b64);
+		*id = _id;
+		return DNSSEC_EOK;
+
+	}
+#endif /* ifdef ENABLE_OQS */
 
 	_cleanup_x509_privkey_ gnutls_x509_privkey_t key = NULL;
 	int r = gnutls_x509_privkey_init(&key);
@@ -206,6 +294,89 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits,
 
 	return DNSSEC_EOK;
 }
+
+#ifdef ENABLE_OQS
+static bool is_pqc_pem(const dnssec_binary_t *pem)
+{
+	const char *header = "-----BEGIN OQS PRIVATE KEY-----";
+	if (pem->size >= strlen(header) && memcmp(pem->data, header, strlen(header)) == 0) {
+		return true;
+	}
+	return false;
+}
+
+static int parse_pqc_pem(const dnssec_binary_t *pem, char **id_ptr, dnssec_binary_t *pub, dnssec_binary_t *sec)
+{
+	const char *header = "-----BEGIN OQS PRIVATE KEY-----\n";
+	const char *footer = "-----END OQS PRIVATE KEY-----";
+	
+	char *start = strstr((char *)pem->data, header);
+	char *end = strstr((char *)pem->data, footer);
+	if (!start || !end || start >= end) {
+		return DNSSEC_MALFORMED_DATA;
+	}
+	start += strlen(header);
+	
+	dnssec_binary_t b64 = { .data = (uint8_t *)start, .size = end - start - 1 };
+	dnssec_binary_t blob = { 0 };
+	int r = dnssec_binary_from_base64(&b64, &blob);
+	if (r != DNSSEC_EOK) return r;
+
+	if (blob.size < 12) {
+		dnssec_binary_free(&blob);
+		return DNSSEC_MALFORMED_DATA;
+	}
+
+	uint32_t alg_id, pub_len, sec_len;
+	uint8_t *ptr = blob.data;
+	memcpy(&alg_id, ptr, 4); ptr += 4;
+	memcpy(&pub_len, ptr, 4); ptr += 4;
+	
+	if (blob.size < 12 + pub_len) {
+		dnssec_binary_free(&blob);
+		return DNSSEC_MALFORMED_DATA;
+	}
+	
+	if (pub) {
+		if (dnssec_binary_alloc(pub, pub_len) != DNSSEC_EOK) {
+			dnssec_binary_free(&blob);
+			return DNSSEC_ENOMEM;
+		}
+		memcpy(pub->data, ptr, pub_len);
+	}
+	
+	if (id_ptr) {
+		uint8_t hash[20];
+		gnutls_hash_fast(GNUTLS_DIG_SHA1, ptr, pub_len, hash);
+		char *_id = malloc(41);
+		for(int i=0; i<20; i++) sprintf(_id + 2*i, "%02x", hash[i]);
+		*id_ptr = _id;
+	}
+	
+	ptr += pub_len;
+	memcpy(&sec_len, ptr, 4); ptr += 4;
+	
+	if (blob.size < 12 + pub_len + sec_len) {
+		if (pub) dnssec_binary_free(pub);
+		if (id_ptr && *id_ptr) free(*id_ptr);
+		dnssec_binary_free(&blob);
+		return DNSSEC_MALFORMED_DATA;
+	}
+	
+	if (sec) {
+		if (dnssec_binary_alloc(sec, sec_len) != DNSSEC_EOK) {
+			if (pub) dnssec_binary_free(pub);
+			if (id_ptr && *id_ptr) free(*id_ptr);
+			dnssec_binary_free(&blob);
+			return DNSSEC_ENOMEM;
+		}
+		memcpy(sec->data, ptr, sec_len);
+	}
+	
+	dnssec_binary_free(&blob);
+	return DNSSEC_EOK;
+}
+#endif
 
 /* -- internal API --------------------------------------------------------- */
 
@@ -464,6 +635,40 @@ static int pkcs8_set_private(void *ctx, gnutls_privkey_t key)
 	return pkcs8_import_key(ctx, &pem, &keyid);
 }
 
+#ifdef ENABLE_OQS
+static int pkcs8_get_pqc_private(void *ctx, const char *id, dnssec_binary_t *pub, dnssec_binary_t *sec)
+{
+	pkcs8_dir_handle_t *handle = ctx;
+
+	_cleanup_close_ int file = -1;
+	int r = key_open_read(handle->dir_name, id, &file);
+	if (r != DNSSEC_EOK) return r;
+
+	size_t size = 0;
+	r = file_size(file, &size);
+	if (r != DNSSEC_EOK) return r;
+
+	if (size == 0) return DNSSEC_MALFORMED_DATA;
+
+	_cleanup_binary_ dnssec_binary_t pem = { 0 };
+	r = dnssec_binary_alloc(&pem, size + 1);
+	if (r != DNSSEC_EOK) return r;
+
+	ssize_t read_count = read(file, pem.data, size);
+	if (read_count == -1) {
+		return dnssec_errno_to_error(errno);
+	}
+	pem.size = read_count;
+	pem.data[pem.size] = '\0';
+
+	if (!is_pqc_pem(&pem)) {
+		return DNSSEC_INVALID_KEY_ALGORITHM; 
+	}
+
+	return parse_pqc_pem(&pem, NULL, pub, sec);
+}
+#endif
+
 /* -- public API ----------------------------------------------------------- */
 
 _public_
@@ -480,6 +685,9 @@ int dnssec_keystore_init_pkcs8(dnssec_keystore_t **store_ptr)
 		.remove_key   = pkcs8_remove_key,
 		.get_private  = pkcs8_get_private,
 		.set_private  = pkcs8_set_private,
+#ifdef ENABLE_OQS
+		.get_pqc_private = pkcs8_get_pqc_private,
+#endif
 	};
 
 	return keystore_create(store_ptr, &IMPLEMENTATION);

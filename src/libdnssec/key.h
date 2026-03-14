@@ -51,6 +51,13 @@ typedef enum dnssec_key_algorithm {
 	DNSSEC_KEY_ALGORITHM_ED25519           =  15,
 	DNSSEC_KEY_ALGORITHM_ED448             =  16,
 
+#ifdef ENABLE_OQS
+	/*These algorithm ID are not standardized by any entity. Research purpose only*/
+	DNSSEC_KEY_ALGORITHM_ML_DSA_44         = 245,
+	DNSSEC_KEY_ALGORITHM_ML_DSA_65         = 246,
+	DNSSEC_KEY_ALGORITHM_ML_DSA_87         = 247,
+#endif
+
 	DNSSEC_KEY_ALGORITHM_INDIRECT          = 252,
 	DNSSEC_KEY_ALGORITHM_PRIVATEDNS        = 253,
 	DNSSEC_KEY_ALGORITHM_PRIVATEOID        = 254,

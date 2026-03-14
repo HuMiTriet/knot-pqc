@@ -145,6 +145,30 @@ int dnssec_keystore_get_private(dnssec_keystore_t *store, const char *id,
 		return DNSSEC_KEY_ALREADY_PRESENT;
 	}
 
+#ifdef ENABLE_OQS
+	uint8_t alg = dnssec_key_get_algorithm(key);
+	if (supported_pqc_algorithm(algorithm_to_gnutls(alg))) {
+		
+		if (key->pqc_private_key.data) {
+			return DNSSEC_KEY_ALREADY_PRESENT;
+		}
+
+
+		int r = store->functions->get_pqc_private(store->ctx, id, &key->pqc_public_key, &key->pqc_private_key);
+		if (r != DNSSEC_EOK) {
+			return r;
+		}
+
+	// r = key_set_private_key(key, privkey);
+	// if (r != DNSSEC_EOK) {
+	// 	gnutls_privkey_deinit(privkey);
+	// 	return r;
+	// }
+
+		return DNSSEC_EOK;
+	}
+#endif
+
 	gnutls_privkey_t privkey = NULL;
 	int r = store->functions->get_private(store->ctx, id, &privkey);
 	if (r != DNSSEC_EOK) {

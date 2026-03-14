@@ -17,3 +17,7 @@
  * \return GnuTLS private key algorithm identifier, GNUTLS_PK_UNKNOWN on error.
  */
 gnutls_pk_algorithm_t algorithm_to_gnutls(dnssec_key_algorithm_t dnssec);
+
+#ifdef ENABLE_OQS
+bool supported_pqc_algorithm(gnutls_pk_algorithm_t algo);
+#endif // ENABLE_OQS

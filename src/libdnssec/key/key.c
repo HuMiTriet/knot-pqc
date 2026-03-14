@@ -76,6 +76,11 @@ static void key_free_internals(dnssec_key_t *key)
 
 	gnutls_pubkey_deinit(key->public_key);
 	key->public_key = NULL;
+
+#ifdef ENABLE_OQS
+	dnssec_binary_free(&key->pqc_public_key);
+	dnssec_binary_free(&key->pqc_private_key);
+#endif
 }
 
 _public_
@@ -440,11 +445,19 @@ int dnssec_key_set_rdata(dnssec_key_t *key, const dnssec_binary_t *rdata)
 _public_
 bool dnssec_key_can_sign(const dnssec_key_t *key)
 {
-	return key && key->private_key;
+	return (key && key->private_key)
+#ifdef ENABLE_OQS
+	|| (key && key->pqc_private_key.data) 
+#endif /* ifdef ENABLE_OQS */
+	;
 }
 
 _public_
 bool dnssec_key_can_verify(const dnssec_key_t *key)
 {
-	return key && key->public_key;
+	return (key && key->public_key)
+#ifdef ENABLE_OQS
+	|| (key && key->pqc_public_key.data) 
+#endif /* ifdef ENABLE_OQS */
+	;
 }
