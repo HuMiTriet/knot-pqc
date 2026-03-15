@@ -337,7 +337,8 @@ int dnssec_key_set_pubkey(dnssec_key_t *key, const dnssec_binary_t *pubkey)
 		return DNSSEC_KEY_ALREADY_PRESENT;
 	}
 
-	if (dnssec_key_get_algorithm(key) == 0) {
+	uint8_t alg_num = dnssec_key_get_algorithm(key);
+	if (alg_num == 0) {
 		return DNSSEC_INVALID_KEY_ALGORITHM;
 	}
 
@@ -346,7 +347,13 @@ int dnssec_key_set_pubkey(dnssec_key_t *key, const dnssec_binary_t *pubkey)
 		return result;
 	}
 
-	result = dnskey_rdata_to_crypto_key(&key->rdata, &key->public_key);
+#ifdef ENABLE_OQS
+	if (supported_pqc_algorithm(algorithm_to_gnutls(alg_num))) 
+		result = dnskey_rdata_to_pqc_crypto_key(&key->rdata, &key->pqc_public_key);
+	else
+#endif /* ifdef ENABLE_OQS */
+		result = dnskey_rdata_to_crypto_key(&key->rdata, &key->public_key);
+
 	if (result != DNSSEC_EOK) {
 		key->rdata.size = DNSKEY_RDATA_OFFSET_PUBKEY; // downsize
 		return result;

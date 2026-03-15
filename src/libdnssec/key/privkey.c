@@ -128,9 +128,10 @@ int key_set_private_key(dnssec_key_t *key, gnutls_privkey_t privkey)
 	return DNSSEC_EOK;
 }
 
-int key_set_pqc_rdata(dnssec_key_t *key, dnssec_binary_t pubkey) {
+int key_set_pqc_rdata(dnssec_key_t *key, dnssec_binary_t pubkey)
+{
 	assert(key);
 	assert(key->private_key == NULL);
 
-
+	return dnskey_rdata_set_pubkey(&key->rdata, &pubkey);
 }

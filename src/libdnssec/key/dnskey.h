@@ -33,3 +33,7 @@ int dnskey_rdata_set_pubkey(dnssec_binary_t *rdata,
  */
 int dnskey_rdata_to_crypto_key(const dnssec_binary_t *rdata,
 			       gnutls_pubkey_t *key_ptr);
+
+#ifdef ENABLE_OQS
+int dnskey_rdata_to_pqc_crypto_key(const dnssec_binary_t *rdata, dnssec_binary_t *key_ptr);
+#endif /* ifdef ENABLE_OQS */
