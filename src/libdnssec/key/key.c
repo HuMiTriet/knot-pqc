@@ -428,6 +428,33 @@ int dnssec_key_set_rdata(dnssec_key_t *key, const dnssec_binary_t *rdata)
 		return DNSSEC_KEY_ALREADY_PRESENT;
 	}
 
+#ifdef ENABLE_OQS
+	uint8_t alg_num = 0;
+	if (rdata->size > DNSKEY_RDATA_OFFSET_ALGORITHM) {
+		alg_num = rdata->data[DNSKEY_RDATA_OFFSET_ALGORITHM];
+	}
+
+	if (alg_num != 0 && supported_pqc_algorithm(algorithm_to_gnutls(alg_num))) {
+		dnssec_binary_t new_pqc_pubkey = { 0 };
+		int result = dnskey_rdata_to_pqc_crypto_key(rdata, &new_pqc_pubkey);
+		if (result != DNSSEC_EOK) {
+			return result;
+		}
+
+		result = dnssec_binary_resize(&key->rdata, rdata->size);
+		if (result != DNSSEC_EOK) {
+			dnssec_binary_free(&new_pqc_pubkey);
+			return result;
+		}
+
+		// commit result
+		memmove(key->rdata.data, rdata->data, rdata->size);
+		key->pqc_public_key = new_pqc_pubkey;
+		
+		return DNSSEC_EOK;
+	}
+#endif
+
 	gnutls_pubkey_t new_pubkey = NULL;
 	int result = dnskey_rdata_to_crypto_key(rdata, &new_pubkey);
 	if (result != DNSSEC_EOK) {

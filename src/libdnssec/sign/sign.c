@@ -20,6 +20,11 @@
 #include "libdnssec/sign/der.h"
 #include "libdnssec/shared/binary_wire.h"
 
+#ifdef ENABLE_OQS
+#include <oqs/sig.h>
+#include "libdnssec/key/algorithm.h"
+#endif
+
 /*!
  * Signature format conversion callback.
  *
@@ -185,6 +190,11 @@ static const algorithm_functions_t *get_functions(const dnssec_key_t *key)
 		return &ecdsa_functions;
 	case DNSSEC_KEY_ALGORITHM_ED25519:
 	case DNSSEC_KEY_ALGORITHM_ED448:
+#ifdef ENABLE_OQS
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
+#endif
 		return &eddsa_functions;
 	default:
 		return NULL;
@@ -210,6 +220,14 @@ static gnutls_sign_algorithm_t algo_dnssec2gnutls(dnssec_key_algorithm_t algorit
 #ifdef HAVE_ED448
 	case DNSSEC_KEY_ALGORITHM_ED448:
 		return GNUTLS_SIGN_EDDSA_ED448;
+#endif
+#ifdef ENABLE_OQS
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
+		return GNUTLS_SIGN_MLDSA44;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
+		return GNUTLS_SIGN_MLDSA65;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
+		return GNUTLS_SIGN_MLDSA87;
 #endif
 	default:
 		return GNUTLS_SIGN_UNKNOWN;
@@ -314,6 +332,36 @@ int dnssec_sign_write(dnssec_sign_ctx_t *ctx, dnssec_sign_flags_t flags, dnssec_
 		.size = vpool_get_length(&ctx->buffer)
 	};
 
+#ifdef ENABLE_OQS
+	if (supported_pqc_algorithm(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)))) {
+		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)));
+		if (!alg_name) return DNSSEC_INVALID_KEY_ALGORITHM;
+		
+		OQS_SIG *sig = OQS_SIG_new(alg_name);
+		if (!sig) return DNSSEC_SIGN_ERROR;
+
+		uint8_t *sig_data = malloc(sig->length_signature);
+		size_t sig_len = 0;
+		if (!sig_data) {
+			OQS_SIG_free(sig);
+			return DNSSEC_ENOMEM;
+		}
+
+		if (OQS_SUCCESS != OQS_SIG_sign(sig, sig_data, &sig_len, data.data, data.size, ctx->key->pqc_private_key.data)) {
+			free(sig_data);
+			OQS_SIG_free(sig);
+			return DNSSEC_SIGN_ERROR;
+		}
+
+		OQS_SIG_free(sig);
+
+		dnssec_binary_t bin_raw = { .data = sig_data, .size = sig_len };
+		int ret = ctx->functions->x509_to_dnssec(ctx, &bin_raw, signature);
+		free(sig_data);
+		return ret;
+	}
+#endif
+
 	unsigned gnutls_flags = 0;
 	if (flags & DNSSEC_SIGN_REPRODUCIBLE) {
 		gnutls_flags |= GNUTLS_PRIVKEY_FLAG_REPRODUCIBLE;
@@ -366,6 +414,24 @@ int dnssec_sign_verify(dnssec_sign_ctx_t *ctx, bool sign_cmp, const dnssec_binar
 	if (result != DNSSEC_EOK) {
 		return result;
 	}
+
+#ifdef ENABLE_OQS
+	if (supported_pqc_algorithm(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)))) {
+		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)));
+		if (!alg_name) return DNSSEC_INVALID_KEY_ALGORITHM;
+		
+		OQS_SIG *sig = OQS_SIG_new(alg_name);
+		if (!sig) return DNSSEC_INVALID_SIGNATURE;
+
+		if (OQS_SUCCESS != OQS_SIG_verify(sig, data.data, data.size, bin_raw.data, bin_raw.size, ctx->key->pqc_public_key.data)) {
+			OQS_SIG_free(sig);
+			return DNSSEC_INVALID_SIGNATURE;
+		}
+		
+		OQS_SIG_free(sig);
+		return DNSSEC_EOK;
+	}
+#endif
 
 	gnutls_datum_t raw = binary_to_datum(&bin_raw);
 
