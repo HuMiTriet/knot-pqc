@@ -159,11 +159,10 @@ int dnssec_keystore_get_private(dnssec_keystore_t *store, const char *id,
 			return r;
 		}
 
-	// r = key_set_private_key(key, privkey);
-	// if (r != DNSSEC_EOK) {
-	// 	gnutls_privkey_deinit(privkey);
-	// 	return r;
-	// }
+		r = dnskey_rdata_set_pubkey(&key->rdata, &key->pqc_public_key);
+		if (r != DNSSEC_EOK) {
+			return r;
+		}
 
 		return DNSSEC_EOK;
 	}
