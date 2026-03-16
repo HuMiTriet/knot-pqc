@@ -135,6 +135,12 @@ dnssec_key_t *dnssec_key_dup(const dnssec_key_t *key)
 		return NULL;
 	}
 
+#ifdef ENABLE_OQS
+	if (key->pqc_private_key.data != NULL) {
+		dnssec_binary_dup(&key->pqc_private_key, &dup->pqc_private_key);
+	} else {
+#endif /* ifdef ENABLE_OQS */
+
 	if (key->private_key != NULL) {
 		gnutls_privkey_init(&dup->private_key);
 
@@ -156,6 +162,9 @@ dnssec_key_t *dnssec_key_dup(const dnssec_key_t *key)
 			                           GNUTLS_PRIVKEY_IMPORT_AUTO_RELEASE);
 		}
 	}
+#ifdef ENABLE_OQS
+}
+#endif /* ifdef ENABLE_OQS */
 
 	return dup;
 }

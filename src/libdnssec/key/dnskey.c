@@ -98,7 +98,7 @@ int dnskey_rdata_to_pqc_crypto_key(const dnssec_binary_t *rdata, dnssec_binary_t
 	}
 
 	wire_ctx_set_offset(&wire, DNSKEY_RDATA_OFFSET_ALGORITHM);
-	algorithm = wire_ctx_read_u8(&wire);
+	// algorithm = wire_ctx_read_u8(&wire);
 	wire_ctx_set_offset(&wire, DNSKEY_RDATA_OFFSET_PUBKEY);
 	binary_available(&wire, &rdata_pubkey);
 
