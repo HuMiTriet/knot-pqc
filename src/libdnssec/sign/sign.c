@@ -64,6 +64,10 @@ struct dnssec_sign_ctx {
 
 	gnutls_sign_algorithm_t sign_algorithm;   //!< Used algorithm for signing.
 	struct vpool buffer;                      //!< Buffer for the data to be signed.
+
+#ifdef ENABLE_OQS
+	OQS_SIG *pqc_ctx;                         //!< Context for PQC signature execution
+#endif
 };
 
 /* -- signature format conversions ----------------------------------------- */
@@ -262,8 +266,30 @@ int dnssec_sign_new(dnssec_sign_ctx_t **ctx_ptr, const dnssec_key_t *key)
 
 	const uint8_t algo_raw = dnssec_key_get_algorithm(key);
 	ctx->sign_algorithm = algo_dnssec2gnutls((dnssec_key_algorithm_t)algo_raw);
+
+#ifdef ENABLE_OQS
+	gnutls_pk_algorithm_t pk_alg = gnutls_sign_get_pk_algorithm(ctx->sign_algorithm);
+	if (supported_pqc_algorithm(pk_alg)) {
+		const char* alg_name = gnutls_pk_algorithm_get_name(pk_alg);
+		if (alg_name) {
+			ctx->pqc_ctx = OQS_SIG_new(alg_name);
+		}
+		if (!ctx->pqc_ctx) {
+			free(ctx);
+			return DNSSEC_INVALID_KEY_ALGORITHM;
+		}
+	} else {
+		ctx->pqc_ctx = NULL;
+	}
+#endif
+
 	int result = dnssec_sign_init(ctx);
 	if (result != DNSSEC_EOK) {
+#ifdef ENABLE_OQS
+		if (ctx->pqc_ctx) {
+			OQS_SIG_free(ctx->pqc_ctx);
+		}
+#endif
 		free(ctx);
 		return result;
 	}
@@ -279,6 +305,12 @@ void dnssec_sign_free(dnssec_sign_ctx_t *ctx)
 	if (!ctx) {
 		return;
 	}
+
+#ifdef ENABLE_OQS
+	if (ctx->pqc_ctx) {
+		OQS_SIG_free(ctx->pqc_ctx);
+	}
+#endif
 
 	vpool_reset(&ctx->buffer);
 
@@ -333,27 +365,17 @@ int dnssec_sign_write(dnssec_sign_ctx_t *ctx, dnssec_sign_flags_t flags, dnssec_
 	};
 
 #ifdef ENABLE_OQS
-	if (supported_pqc_algorithm(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)))) {
-		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)));
-		if (!alg_name) return DNSSEC_INVALID_KEY_ALGORITHM;
-		
-		OQS_SIG *sig = OQS_SIG_new(alg_name);
-		if (!sig) return DNSSEC_SIGN_ERROR;
-
-		uint8_t *sig_data = malloc(sig->length_signature);
+	if (ctx->pqc_ctx) {
+		uint8_t *sig_data = malloc(ctx->pqc_ctx->length_signature);
 		size_t sig_len = 0;
 		if (!sig_data) {
-			OQS_SIG_free(sig);
 			return DNSSEC_ENOMEM;
 		}
 
-		if (OQS_SUCCESS != OQS_SIG_sign(sig, sig_data, &sig_len, data.data, data.size, ctx->key->pqc_private_key.data)) {
+		if (OQS_SUCCESS != OQS_SIG_sign(ctx->pqc_ctx, sig_data, &sig_len, data.data, data.size, ctx->key->pqc_private_key.data)) {
 			free(sig_data);
-			OQS_SIG_free(sig);
 			return DNSSEC_SIGN_ERROR;
 		}
-
-		OQS_SIG_free(sig);
 
 		dnssec_binary_t bin_raw = { .data = sig_data, .size = sig_len };
 		int ret = ctx->functions->x509_to_dnssec(ctx, &bin_raw, signature);
@@ -416,19 +438,11 @@ int dnssec_sign_verify(dnssec_sign_ctx_t *ctx, bool sign_cmp, const dnssec_binar
 	}
 
 #ifdef ENABLE_OQS
-	if (supported_pqc_algorithm(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)))) {
-		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm_to_gnutls(dnssec_key_get_algorithm(ctx->key)));
-		if (!alg_name) return DNSSEC_INVALID_KEY_ALGORITHM;
-		
-		OQS_SIG *sig = OQS_SIG_new(alg_name);
-		if (!sig) return DNSSEC_INVALID_SIGNATURE;
-
-		if (OQS_SUCCESS != OQS_SIG_verify(sig, data.data, data.size, bin_raw.data, bin_raw.size, ctx->key->pqc_public_key.data)) {
-			OQS_SIG_free(sig);
+	if (ctx->pqc_ctx) {
+		if (OQS_SUCCESS != OQS_SIG_verify(ctx->pqc_ctx, data.data, data.size, bin_raw.data, bin_raw.size, ctx->key->pqc_public_key.data)) {
 			return DNSSEC_INVALID_SIGNATURE;
 		}
 		
-		OQS_SIG_free(sig);
 		return DNSSEC_EOK;
 	}
 #endif
