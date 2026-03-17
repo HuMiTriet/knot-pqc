@@ -8,6 +8,12 @@
 #include <strings.h>
 #include <time.h>
 #include <fcntl.h>
+#include <unistd.h>
+
+#ifdef ENABLE_OQS
+#include <oqs/sig.h>
+#include <gnutls/gnutls.h>
+#endif
 
 #include "utils/keymgr/functions.h"
 
@@ -651,8 +657,92 @@ fail:
 
 int keymgr_import_pem(kdnssec_ctx_t *ctx, const char *import_file, int argc, char *argv[])
 {
+#ifdef ENABLE_OQS
+	// Parse flags first so ctx->policy->algorithm is updated from command-line args
+	// before we use it to detect the algorithm type.
+	knot_time_t now = knot_time();
+	knot_kasp_key_timing_t timing = { .publish = now, .active = now };
+	kdnssec_generate_flags_t flags = 0;
+	uint16_t keysize = 0;
+	if (!genkeyargs(argc, argv, false, &flags, &ctx->policy->algorithm,
+	                &keysize, &timing, NULL)) {
+		return KNOT_EINVAL;
+	}
+
+	dnssec_key_algorithm_t alg = ctx->policy->algorithm;
+
+	// Local helper: map DNSSEC algorithm to OQS name (avoids internal symbol dependency)
+	const char *oqs_alg_name = NULL;
+	switch (alg) {
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44: oqs_alg_name = OQS_SIG_alg_ml_dsa_44; break;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65: oqs_alg_name = OQS_SIG_alg_ml_dsa_65; break;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87: oqs_alg_name = OQS_SIG_alg_ml_dsa_87; break;
+	default: break;
+	}
+
+	if (oqs_alg_name != NULL) {
+		int ret = KNOT_EOK;
+		dnssec_key_t *key = NULL;
+		char *keyid = NULL;
+
+		// Read the OQS PEM file directly — pkcs8_import_key handles this format
+		int fd = open(import_file, O_RDONLY);
+		if (fd == -1) return knot_map_errno();
+		off_t fsize = lseek(fd, 0, SEEK_END);
+		lseek(fd, 0, SEEK_SET);
+		if (fsize <= 0) { close(fd); return KNOT_EMALF; }
+
+		dnssec_binary_t pem = { 0 };
+		ret = dnssec_binary_alloc(&pem, (size_t)fsize);
+		if (ret != DNSSEC_EOK) { close(fd); return knot_error_from_libdnssec(ret); }
+		if (read(fd, pem.data, pem.size) != (ssize_t)pem.size) {
+			close(fd); dnssec_binary_free(&pem); return knot_map_errno();
+		}
+		close(fd);
+
+		knot_kasp_keystore_t *keystore = knot_store_for_key(ctx->keystores,
+		                                 (flags & DNSKEY_GENERATE_KSK));
+		if (!keystore) { dnssec_binary_free(&pem); return KNOT_DNSSEC_ENOKEYSTORE; }
+
+		ret = dnssec_keystore_import(keystore->keystore, &pem, &keyid);
+		dnssec_binary_free(&pem);
+		if (ret != DNSSEC_EOK) { free(keyid); return knot_error_from_libdnssec(ret); }
+
+		// Build and register the DNSSEC key
+		ret = dnssec_key_new(&key);
+		if (ret != DNSSEC_EOK) { free(keyid); return knot_error_from_libdnssec(ret); }
+		dnssec_key_set_dname(key, ctx->zone->dname);
+		dnssec_key_set_flags(key, dnskey_flags(flags & DNSKEY_GENERATE_SEP_ON));
+		dnssec_key_set_algorithm(key, alg);
+
+		ret = kdnssec_load_private(ctx->keystores, keyid, key, NULL, NULL);
+		if (ret != DNSSEC_EOK) {
+			err_import_key(keyid, "");
+			dnssec_key_free(key); free(keyid);
+			return knot_error_from_libdnssec(ret);
+		}
+
+		knot_kasp_key_t *kkey = calloc(1, sizeof(*kkey));
+		if (!kkey) { dnssec_key_free(key); free(keyid); return KNOT_ENOMEM; }
+		kkey->id = keyid;
+		kkey->key = key;
+		kkey->timing = timing;
+		kkey->is_ksk = (flags & DNSKEY_GENERATE_KSK);
+		kkey->is_zsk = (flags & DNSKEY_GENERATE_ZSK);
+
+		ret = kasp_zone_append(ctx->zone, kkey);
+		free(kkey);
+		if (ret != KNOT_EOK) { dnssec_key_free(key); free(keyid); return ret; }
+
+		ret = kdnssec_ctx_commit(ctx);
+		if (ret == KNOT_EOK) printf("%s\n", keyid);
+		return ret;
+	}
+#endif
+	// Non-PQC: delegate to existing PEM import path
 	return import_key(ctx, KEYSTORE_BACKEND_PEM, import_file, argc, argv);
 }
+
 
 int keymgr_import_pkcs11(kdnssec_ctx_t *ctx, char *key_id, int argc, char *argv[])
 {
