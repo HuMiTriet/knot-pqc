@@ -18,8 +18,8 @@
 #include "libdnssec/keystore.h"
 #include "libdnssec/keystore/internal.h"
 #include "libdnssec/pem.h"
-#include "libdnssec/shared/keyid_gnutls.h"
 #include "libdnssec/shared/shared.h"
+#include "libdnssec/shared/keyid_gnutls.h"
 
 #ifdef ENABLE_OQS
 #include "libdnssec/key/algorithm.h"
@@ -133,7 +133,7 @@ static int pkcs8_dir_read(pkcs8_dir_handle_t *handle, const char *id, dnssec_bin
 
 	// read the stored data
 
-	dnssec_binary_t read_pem = {0};
+	dnssec_binary_t read_pem = { 0 };
 	result = dnssec_binary_alloc(&read_pem, size);
 	if (result != DNSSEC_EOK) {
 		return result;
@@ -151,7 +151,8 @@ static int pkcs8_dir_read(pkcs8_dir_handle_t *handle, const char *id, dnssec_bin
 	return DNSSEC_EOK;
 }
 
-static bool key_is_duplicate(int open_error, pkcs8_dir_handle_t *handle, const char *id, const dnssec_binary_t *pem)
+static bool key_is_duplicate(int open_error, pkcs8_dir_handle_t *handle,
+			     const char *id, const dnssec_binary_t *pem)
 {
 	assert(handle);
 	assert(id);
@@ -161,7 +162,7 @@ static bool key_is_duplicate(int open_error, pkcs8_dir_handle_t *handle, const c
 		return false;
 	}
 
-	_cleanup_binary_ dnssec_binary_t old = {0};
+	_cleanup_binary_ dnssec_binary_t old = { 0 };
 	int r = pkcs8_dir_read(handle, id, &old);
 	if (r != DNSSEC_EOK) {
 		return false;
@@ -170,7 +171,8 @@ static bool key_is_duplicate(int open_error, pkcs8_dir_handle_t *handle, const c
 	return dnssec_binary_cmp(&old, pem) == 0;
 }
 
-static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_binary_t *pem, char **id)
+static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits,
+			dnssec_binary_t *pem, char **id)
 {
 	assert(pem);
 	assert(id);
@@ -178,7 +180,7 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_b
 	// generate key
 #ifdef ENABLE_OQS
 	if (supported_pqc_algorithm(algorithm)) {
-		const char *alg_name = gnutls_pk_algorithm_get_name(algorithm);
+		const char* alg_name = gnutls_pk_algorithm_get_name(algorithm);
 
 		if (!alg_name) {
 			fprintf(stderr, "gnutls_pk_algorithm_get_name result in %s\n", alg_name);
@@ -190,15 +192,13 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_b
 		uint8_t *pub = malloc(sig->length_public_key);
 		uint8_t *sec = malloc(sig->length_secret_key);
 		if (!pub || !sec) {
-			free(pub);
-			free(sec);
+			free(pub); free(sec);
 			OQS_SIG_free(sig);
 			return DNSSEC_ENOMEM;
 		}
 
 		if (OQS_SIG_keypair(sig, pub, sec) != OQS_SUCCESS) {
-			free(pub);
-			free(sec);
+			free(pub); free(sec);
 			OQS_SIG_free(sig);
 			return DNSSEC_KEY_GENERATE_ERROR;
 		}
@@ -208,44 +208,32 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_b
 
 		char *_id = malloc(41);
 		if (!_id) {
-			free(pub);
-			free(sec);
-			OQS_SIG_free(sig);
+			free(pub); free(sec); OQS_SIG_free(sig);
 			return DNSSEC_ENOMEM;
 		}
-		for (int i = 0; i < 20; i++)
-			sprintf(_id + 2 * i, "%02x", hash[i]);
+		for(int i=0; i<20; i++) sprintf(_id + 2*i, "%02x", hash[i]);
 
 		uint32_t alg_id = algorithm;
 		uint32_t pub_len = sig->length_public_key;
 		uint32_t sec_len = sig->length_secret_key;
 		size_t blob_sz = 12 + pub_len + sec_len;
 
-		dnssec_binary_t blob = {.data = malloc(blob_sz), .size = blob_sz};
+		dnssec_binary_t blob = { .data = malloc(blob_sz), .size = blob_sz };
 
 		if (!blob.data) {
-			free(pub);
-			free(sec);
-			free(_id);
-			OQS_SIG_free(sig);
+			free(pub); free(sec); free(_id); OQS_SIG_free(sig);
 			return DNSSEC_ENOMEM;
 		}
 		uint8_t *ptr = blob.data;
-		memcpy(ptr, &alg_id, 4);
-		ptr += 4;
-		memcpy(ptr, &pub_len, 4);
-		ptr += 4;
-		memcpy(ptr, pub, pub_len);
-		ptr += pub_len;
-		memcpy(ptr, &sec_len, 4);
-		ptr += 4;
+		memcpy(ptr, &alg_id, 4); ptr += 4;
+		memcpy(ptr, &pub_len, 4); ptr += 4;
+		memcpy(ptr, pub, pub_len); ptr += pub_len;
+		memcpy(ptr, &sec_len, 4); ptr += 4;
 		memcpy(ptr, sec, sec_len);
 
-		free(pub);
-		free(sec);
-		OQS_SIG_free(sig);
+		free(pub); free(sec); OQS_SIG_free(sig);
 
-		dnssec_binary_t b64 = {0};
+		dnssec_binary_t b64 = { 0 };
 		int r = dnssec_binary_to_base64(&blob, &b64);
 		dnssec_binary_free(&blob);
 		if (r != DNSSEC_EOK) {
@@ -264,9 +252,10 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_b
 		}
 		snprintf((char *)pem->data, pem->size, "%s%.*s\n%s", header, (int)b64.size, b64.data, footer);
 		pem->size -= 1; // remove null byte
-
+		
 		dnssec_binary_free(&b64);
 		*id = _id;
+
 		return DNSSEC_EOK;
 	}
 #endif /* ifdef ENABLE_OQS */
@@ -284,7 +273,7 @@ static int pem_generate(gnutls_pk_algorithm_t algorithm, unsigned bits, dnssec_b
 
 	// convert to PEM and export the ID
 
-	dnssec_binary_t _pem = {0};
+	dnssec_binary_t _pem = { 0 };
 	r = dnssec_pem_from_x509(key, &_pem);
 	if (r != DNSSEC_EOK) {
 		return r;
@@ -319,19 +308,18 @@ static int parse_pqc_pem(const dnssec_binary_t *pem, char **id_ptr, dnssec_binar
 {
 	const char *header = "-----BEGIN OQS PRIVATE KEY-----\n";
 	const char *footer = "-----END OQS PRIVATE KEY-----";
-
+	
 	char *start = strstr((char *)pem->data, header);
 	char *end = strstr((char *)pem->data, footer);
 	if (!start || !end || start >= end) {
 		return DNSSEC_MALFORMED_DATA;
 	}
 	start += strlen(header);
-
-	dnssec_binary_t b64 = {.data = (uint8_t *)start, .size = end - start - 1};
-	dnssec_binary_t blob = {0};
+	
+	dnssec_binary_t b64 = { .data = (uint8_t *)start, .size = end - start - 1 };
+	dnssec_binary_t blob = { 0 };
 	int r = dnssec_binary_from_base64(&b64, &blob);
-	if (r != DNSSEC_EOK)
-		return r;
+	if (r != DNSSEC_EOK) return r;
 
 	if (blob.size < 12) {
 		dnssec_binary_free(&blob);
@@ -340,16 +328,14 @@ static int parse_pqc_pem(const dnssec_binary_t *pem, char **id_ptr, dnssec_binar
 
 	uint32_t alg_id, pub_len, sec_len;
 	uint8_t *ptr = blob.data;
-	memcpy(&alg_id, ptr, 4);
-	ptr += 4;
-	memcpy(&pub_len, ptr, 4);
-	ptr += 4;
-
+	memcpy(&alg_id, ptr, 4); ptr += 4;
+	memcpy(&pub_len, ptr, 4); ptr += 4;
+	
 	if (blob.size < 12 + pub_len) {
 		dnssec_binary_free(&blob);
 		return DNSSEC_MALFORMED_DATA;
 	}
-
+	
 	if (pub) {
 		if (dnssec_binary_alloc(pub, pub_len) != DNSSEC_EOK) {
 			dnssec_binary_free(&blob);
@@ -357,41 +343,35 @@ static int parse_pqc_pem(const dnssec_binary_t *pem, char **id_ptr, dnssec_binar
 		}
 		memcpy(pub->data, ptr, pub_len);
 	}
-
+	
 	if (id_ptr) {
 		uint8_t hash[20];
 		gnutls_hash_fast(GNUTLS_DIG_SHA1, ptr, pub_len, hash);
 		char *_id = malloc(41);
-		for (int i = 0; i < 20; i++)
-			sprintf(_id + 2 * i, "%02x", hash[i]);
+		for(int i=0; i<20; i++) sprintf(_id + 2*i, "%02x", hash[i]);
 		*id_ptr = _id;
 	}
-
+	
 	ptr += pub_len;
-	memcpy(&sec_len, ptr, 4);
-	ptr += 4;
-
+	memcpy(&sec_len, ptr, 4); ptr += 4;
+	
 	if (blob.size < 12 + pub_len + sec_len) {
-		if (pub)
-			dnssec_binary_free(pub);
-		if (id_ptr && *id_ptr)
-			free(*id_ptr);
+		if (pub) dnssec_binary_free(pub);
+		if (id_ptr && *id_ptr) free(*id_ptr);
 		dnssec_binary_free(&blob);
 		return DNSSEC_MALFORMED_DATA;
 	}
-
+	
 	if (sec) {
 		if (dnssec_binary_alloc(sec, sec_len) != DNSSEC_EOK) {
-			if (pub)
-				dnssec_binary_free(pub);
-			if (id_ptr && *id_ptr)
-				free(*id_ptr);
+			if (pub) dnssec_binary_free(pub);
+			if (id_ptr && *id_ptr) free(*id_ptr);
 			dnssec_binary_free(&blob);
 			return DNSSEC_ENOMEM;
 		}
 		memcpy(sec->data, ptr, sec_len);
 	}
-
+	
 	dnssec_binary_free(&blob);
 	return DNSSEC_EOK;
 }
@@ -461,7 +441,8 @@ static int pkcs8_close(void *ctx)
 	return DNSSEC_EOK;
 }
 
-static int pkcs8_generate_key(void *ctx, gnutls_pk_algorithm_t algorithm, unsigned bits, const char *label, char **id_ptr)
+static int pkcs8_generate_key(void *ctx, gnutls_pk_algorithm_t algorithm,
+			      unsigned bits, const char *label, char **id_ptr)
 {
 	if (!ctx || !id_ptr) {
 		return DNSSEC_EINVAL;
@@ -474,7 +455,7 @@ static int pkcs8_generate_key(void *ctx, gnutls_pk_algorithm_t algorithm, unsign
 	// generate key
 
 	char *id = NULL;
-	_cleanup_binary_ dnssec_binary_t pem = {0};
+	_cleanup_binary_ dnssec_binary_t pem = { 0 };
 	int r = pem_generate(algorithm, bits, &pem, &id);
 	if (r != DNSSEC_EOK) {
 		return r;
@@ -514,6 +495,8 @@ static int pkcs8_import_key(void *ctx, const dnssec_binary_t *pem, char **id_ptr
 	}
 
 	pkcs8_dir_handle_t *handle = ctx;
+
+	// retrieve key ID
 
 	char *id = NULL;
 
