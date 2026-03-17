@@ -55,6 +55,7 @@ static const struct limits *get_limits(dnssec_key_algorithm_t algorithm)
 		.def = 456,
 	};
 
+#ifdef ENABLE_OQS
 	static const struct limits MLDSA44 = {
 		.min = 2560,
 		.max = 2560,
@@ -72,6 +73,7 @@ static const struct limits *get_limits(dnssec_key_algorithm_t algorithm)
 		.max = 4896,
 		.def = 4896,
 	};
+#endif /* ifdef ENABLE_OQS */
 
 	switch (algorithm) {
 	case DNSSEC_KEY_ALGORITHM_RSA_SHA1:
