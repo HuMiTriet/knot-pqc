@@ -3,22 +3,20 @@
  *  For more information, see <https://www.knot-dns.cz/>
  */
 
+#include <fcntl.h>
 #include <limits.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #ifdef ENABLE_OQS
-#include <oqs/sig.h>
 #include <gnutls/gnutls.h>
+#include <oqs/sig.h>
 #endif
 
 #include "utils/keymgr/functions.h"
 
-#include "utils/common/msg.h"
-#include "utils/keymgr/bind_privkey.h"
 #include "contrib/base64.h"
 #include "contrib/color.h"
 #include "contrib/ctype.h"
@@ -27,16 +25,18 @@
 #include "contrib/strtonum.h"
 #include "contrib/tolower.h"
 #include "contrib/wire_ctx.h"
-#include "libdnssec/error.h"
-#include "libdnssec/keyid.h"
-#include "libdnssec/shared/shared.h"
 #include "knot/dnssec/kasp/policy.h"
 #include "knot/dnssec/key-events.h"
 #include "knot/dnssec/rrset-sign.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/dnssec/zone-keys.h"
 #include "knot/dnssec/zone-sign.h"
+#include "libdnssec/error.h"
+#include "libdnssec/keyid.h"
+#include "libdnssec/shared/shared.h"
 #include "libzscanner/scanner.h"
+#include "utils/common/msg.h"
+#include "utils/keymgr/bind_privkey.h"
 
 inline static bool both_dash_undersc(const char a, const char b)
 {
@@ -64,7 +64,7 @@ bool same_command(const char *arg, const char *cmd, bool prefix)
 int parse_timestamp(char *arg, knot_time_t *stamp)
 {
 	int ret = knot_time_parse("YMDhms|'now'+-#u|'t'+-#u|+-#u|'t'+-#|+-#|#",
-	                          arg, stamp);
+	    arg, stamp);
 	if (ret < 0) {
 		ERR2("invalid timestamp: %s", arg);
 		return KNOT_EINVAL;
@@ -147,25 +147,22 @@ static bool same_command_bool(const char *arg, const char *cmd, bool *res)
 	}
 }
 
-static bool genkeyargs(int argc, char *argv[], bool just_timing,
-                       kdnssec_generate_flags_t *flags, dnssec_key_algorithm_t *algorithm,
-                       uint16_t *keysize, knot_kasp_key_timing_t *timing,
-                       const char **addtopolicy)
+static bool genkeyargs(int argc, char *argv[], bool just_timing, kdnssec_generate_flags_t *flags, dnssec_key_algorithm_t *algorithm, uint16_t *keysize, knot_kasp_key_timing_t *timing, const char **addtopolicy)
 {
 	// generate algorithms field
 	const char *algnames[256] = {
-		[DNSSEC_KEY_ALGORITHM_RSA_SHA1] = "rsasha1",
-		[DNSSEC_KEY_ALGORITHM_RSA_SHA1_NSEC3] = "rsasha1-nsec3-sha1",
-		[DNSSEC_KEY_ALGORITHM_RSA_SHA256] = "rsasha256",
-		[DNSSEC_KEY_ALGORITHM_RSA_SHA512] = "rsasha512",
-		[DNSSEC_KEY_ALGORITHM_ECDSA_P256_SHA256] = "ecdsap256sha256",
-		[DNSSEC_KEY_ALGORITHM_ECDSA_P384_SHA384] = "ecdsap384sha384",
-		[DNSSEC_KEY_ALGORITHM_ED25519] = "ed25519",
-		[DNSSEC_KEY_ALGORITHM_ED448] = "ed448",
+	    [DNSSEC_KEY_ALGORITHM_RSA_SHA1] = "rsasha1",
+	    [DNSSEC_KEY_ALGORITHM_RSA_SHA1_NSEC3] = "rsasha1-nsec3-sha1",
+	    [DNSSEC_KEY_ALGORITHM_RSA_SHA256] = "rsasha256",
+	    [DNSSEC_KEY_ALGORITHM_RSA_SHA512] = "rsasha512",
+	    [DNSSEC_KEY_ALGORITHM_ECDSA_P256_SHA256] = "ecdsap256sha256",
+	    [DNSSEC_KEY_ALGORITHM_ECDSA_P384_SHA384] = "ecdsap384sha384",
+	    [DNSSEC_KEY_ALGORITHM_ED25519] = "ed25519",
+	    [DNSSEC_KEY_ALGORITHM_ED448] = "ed448",
 #ifdef ENABLE_OQS
-		[DNSSEC_KEY_ALGORITHM_ML_DSA_44] = "mldsa44",
-		[DNSSEC_KEY_ALGORITHM_ML_DSA_65] = "mldsa65",
-		[DNSSEC_KEY_ALGORITHM_ML_DSA_87] = "mldsa87",
+	    [DNSSEC_KEY_ALGORITHM_ML_DSA_44] = "mldsa44",
+	    [DNSSEC_KEY_ALGORITHM_ML_DSA_65] = "mldsa65",
+	    [DNSSEC_KEY_ALGORITHM_ML_DSA_87] = "mldsa87",
 #endif /* ifdef ENABLE_OQS */
 	};
 
@@ -209,7 +206,7 @@ static bool genkeyargs(int argc, char *argv[], bool just_timing,
 	}
 
 	if (*flags & DNSKEY_GENERATE_FOR_LATER) {
-		*timing = (knot_kasp_key_timing_t){ .created = timing->created };
+		*timing = (knot_kasp_key_timing_t){.created = timing->created};
 	}
 
 	return true;
@@ -225,8 +222,7 @@ static bool genkeyargs_ksk(int argc, char *argv[])
 	return false;
 }
 
-static bool _check_lower(knot_time_t a, knot_time_t b,
-			 const char *a_name, const char *b_name)
+static bool _check_lower(knot_time_t a, knot_time_t b, const char *a_name, const char *b_name)
 {
 	if (knot_time_cmp(a, b) > 0) {
 		ERR2("timestamp '%s' must be before '%s'", a_name, b_name);
@@ -235,7 +231,9 @@ static bool _check_lower(knot_time_t a, knot_time_t b,
 	return true;
 }
 
-#define check_lower(t, a, b) if (!_check_lower(t->a, t->b, #a, #b)) return KNOT_ESEMCHECK
+#define check_lower(t, a, b)                   \
+	if (!_check_lower(t->a, t->b, #a, #b)) \
+	return KNOT_ESEMCHECK
 
 static int check_timers(const knot_kasp_key_timing_t *t)
 {
@@ -258,12 +256,12 @@ static int check_timers(const knot_kasp_key_timing_t *t)
 int keymgr_generate_key(kdnssec_ctx_t *ctx, int argc, char *argv[])
 {
 	knot_time_t now = knot_time(), infinity = 0;
-	knot_kasp_key_timing_t gen_timing = { now, infinity, now, infinity, now, infinity, infinity, infinity, infinity };
+	knot_kasp_key_timing_t gen_timing = {now, infinity, now, infinity, now, infinity, infinity, infinity, infinity};
 	kdnssec_generate_flags_t flags = 0;
 	uint16_t keysize = 0;
 	const char *addtopolicy = NULL;
 	if (!genkeyargs(argc, argv, false, &flags, &ctx->policy->algorithm,
-			&keysize, &gen_timing, &addtopolicy)) {
+		&keysize, &gen_timing, &addtopolicy)) {
 		return KNOT_EINVAL;
 	}
 
@@ -307,7 +305,7 @@ int keymgr_generate_key(kdnssec_ctx_t *ctx, int argc, char *argv[])
 
 		knot_dname_t *unused = NULL;
 		ret = kasp_db_get_policy_last(ctx->kasp_db, addtopolicy, &unused,
-		                              &last_policy_last);
+		    &last_policy_last);
 		knot_dname_free(unused, NULL);
 		if (ret != KNOT_EOK && ret != KNOT_ENOENT) {
 			free(last_policy_last);
@@ -315,7 +313,7 @@ int keymgr_generate_key(kdnssec_ctx_t *ctx, int argc, char *argv[])
 		}
 
 		ret = kasp_db_set_policy_last(ctx->kasp_db, addtopolicy, last_policy_last,
-		                              ctx->zone->dname, key->id);
+		    ctx->zone->dname, key->id);
 		free(last_policy_last);
 		if (ret != KNOT_EOK) {
 			return ret;
@@ -342,9 +340,8 @@ static void parse_record(zs_scanner_t *scanner)
 	}
 
 	dnssec_binary_t rdata = {
-		.data = scanner->r_data,
-		.size = scanner->r_data_length
-	};
+	    .data = scanner->r_data,
+	    .size = scanner->r_data_length};
 	dnssec_key_set_dname(key, scanner->dname);
 	dnssec_key_set_rdata(key, &rdata);
 }
@@ -657,92 +654,8 @@ fail:
 
 int keymgr_import_pem(kdnssec_ctx_t *ctx, const char *import_file, int argc, char *argv[])
 {
-#ifdef ENABLE_OQS
-	// Parse flags first so ctx->policy->algorithm is updated from command-line args
-	// before we use it to detect the algorithm type.
-	knot_time_t now = knot_time();
-	knot_kasp_key_timing_t timing = { .publish = now, .active = now };
-	kdnssec_generate_flags_t flags = 0;
-	uint16_t keysize = 0;
-	if (!genkeyargs(argc, argv, false, &flags, &ctx->policy->algorithm,
-	                &keysize, &timing, NULL)) {
-		return KNOT_EINVAL;
-	}
-
-	dnssec_key_algorithm_t alg = ctx->policy->algorithm;
-
-	// Local helper: map DNSSEC algorithm to OQS name (avoids internal symbol dependency)
-	const char *oqs_alg_name = NULL;
-	switch (alg) {
-	case DNSSEC_KEY_ALGORITHM_ML_DSA_44: oqs_alg_name = OQS_SIG_alg_ml_dsa_44; break;
-	case DNSSEC_KEY_ALGORITHM_ML_DSA_65: oqs_alg_name = OQS_SIG_alg_ml_dsa_65; break;
-	case DNSSEC_KEY_ALGORITHM_ML_DSA_87: oqs_alg_name = OQS_SIG_alg_ml_dsa_87; break;
-	default: break;
-	}
-
-	if (oqs_alg_name != NULL) {
-		int ret = KNOT_EOK;
-		dnssec_key_t *key = NULL;
-		char *keyid = NULL;
-
-		// Read the OQS PEM file directly — pkcs8_import_key handles this format
-		int fd = open(import_file, O_RDONLY);
-		if (fd == -1) return knot_map_errno();
-		off_t fsize = lseek(fd, 0, SEEK_END);
-		lseek(fd, 0, SEEK_SET);
-		if (fsize <= 0) { close(fd); return KNOT_EMALF; }
-
-		dnssec_binary_t pem = { 0 };
-		ret = dnssec_binary_alloc(&pem, (size_t)fsize);
-		if (ret != DNSSEC_EOK) { close(fd); return knot_error_from_libdnssec(ret); }
-		if (read(fd, pem.data, pem.size) != (ssize_t)pem.size) {
-			close(fd); dnssec_binary_free(&pem); return knot_map_errno();
-		}
-		close(fd);
-
-		knot_kasp_keystore_t *keystore = knot_store_for_key(ctx->keystores,
-		                                 (flags & DNSKEY_GENERATE_KSK));
-		if (!keystore) { dnssec_binary_free(&pem); return KNOT_DNSSEC_ENOKEYSTORE; }
-
-		ret = dnssec_keystore_import(keystore->keystore, &pem, &keyid);
-		dnssec_binary_free(&pem);
-		if (ret != DNSSEC_EOK) { free(keyid); return knot_error_from_libdnssec(ret); }
-
-		// Build and register the DNSSEC key
-		ret = dnssec_key_new(&key);
-		if (ret != DNSSEC_EOK) { free(keyid); return knot_error_from_libdnssec(ret); }
-		dnssec_key_set_dname(key, ctx->zone->dname);
-		dnssec_key_set_flags(key, dnskey_flags(flags & DNSKEY_GENERATE_SEP_ON));
-		dnssec_key_set_algorithm(key, alg);
-
-		ret = kdnssec_load_private(ctx->keystores, keyid, key, NULL, NULL);
-		if (ret != DNSSEC_EOK) {
-			err_import_key(keyid, "");
-			dnssec_key_free(key); free(keyid);
-			return knot_error_from_libdnssec(ret);
-		}
-
-		knot_kasp_key_t *kkey = calloc(1, sizeof(*kkey));
-		if (!kkey) { dnssec_key_free(key); free(keyid); return KNOT_ENOMEM; }
-		kkey->id = keyid;
-		kkey->key = key;
-		kkey->timing = timing;
-		kkey->is_ksk = (flags & DNSKEY_GENERATE_KSK);
-		kkey->is_zsk = (flags & DNSKEY_GENERATE_ZSK);
-
-		ret = kasp_zone_append(ctx->zone, kkey);
-		free(kkey);
-		if (ret != KNOT_EOK) { dnssec_key_free(key); free(keyid); return ret; }
-
-		ret = kdnssec_ctx_commit(ctx);
-		if (ret == KNOT_EOK) printf("%s\n", keyid);
-		return ret;
-	}
-#endif
-	// Non-PQC: delegate to existing PEM import path
 	return import_key(ctx, KEYSTORE_BACKEND_PEM, import_file, argc, argv);
 }
-
 
 int keymgr_import_pkcs11(kdnssec_ctx_t *ctx, char *key_id, int argc, char *argv[])
 {
@@ -768,7 +681,7 @@ int keymgr_nsec3_salt_print(kdnssec_ctx_t *ctx)
 	dnssec_binary_t salt_bin;
 	knot_time_t created;
 	int ret = kasp_db_load_nsec3salt(ctx->kasp_db, ctx->zone->dname,
-	                                 &salt_bin, &created);
+	    &salt_bin, &created);
 	switch (ret) {
 	case KNOT_EOK:
 		printf("Current salt: ");
@@ -793,7 +706,7 @@ int keymgr_nsec3_salt_set(kdnssec_ctx_t *ctx, const char *new_salt)
 {
 	assert(new_salt);
 
-	dnssec_binary_t salt_bin = { 0 };
+	dnssec_binary_t salt_bin = {0};
 	if (strcmp(new_salt, "-") != 0) {
 		salt_bin.data = hex_to_bin(new_salt, &salt_bin.size);
 		if (salt_bin.data == NULL) {
@@ -802,10 +715,10 @@ int keymgr_nsec3_salt_set(kdnssec_ctx_t *ctx, const char *new_salt)
 	}
 	if (salt_bin.size != ctx->policy->nsec3_salt_length) {
 		WARN2("specified salt doesn't match configured salt length (%d)",
-		      (int)ctx->policy->nsec3_salt_length);
+		    (int)ctx->policy->nsec3_salt_length);
 	}
 	int ret = kasp_db_store_nsec3salt(ctx->kasp_db, ctx->zone->dname,
-	                                  &salt_bin, knot_time());
+	    &salt_bin, knot_time());
 	if (salt_bin.size > 0) {
 		free(salt_bin.data);
 	}
@@ -816,7 +729,7 @@ int keymgr_serial_print(kdnssec_ctx_t *ctx, kaspdb_serial_t type)
 {
 	uint32_t serial = 0;
 	int ret = kasp_db_load_serial(ctx->kasp_db, ctx->zone->dname,
-	                              type, &serial);
+	    type, &serial);
 	switch (ret) {
 	case KNOT_EOK:
 		printf("Current serial: %u\n", serial);
@@ -832,11 +745,10 @@ int keymgr_serial_print(kdnssec_ctx_t *ctx, kaspdb_serial_t type)
 int keymgr_serial_set(kdnssec_ctx_t *ctx, kaspdb_serial_t type, uint32_t new_serial)
 {
 	return kasp_db_store_serial(ctx->kasp_db, ctx->zone->dname,
-	                            type, new_serial);
+	    type, new_serial);
 }
 
-static void print_tsig(dnssec_tsig_algorithm_t mac, const char *name,
-		       const dnssec_binary_t *secret)
+static void print_tsig(dnssec_tsig_algorithm_t mac, const char *name, const dnssec_binary_t *secret)
 {
 	assert(name);
 	assert(secret);
@@ -871,11 +783,11 @@ int keymgr_generate_tsig(const char *tsig_name, const char *alg_name, int bits)
 
 	if (bits < optimal_bits) {
 		WARN2("optimal key size for %s is at least %d bits",
-		       dnssec_tsig_algorithm_to_name(alg), optimal_bits);
+		    dnssec_tsig_algorithm_to_name(alg), optimal_bits);
 	}
 	assert(bits % CHAR_BIT == 0);
 
-	_cleanup_binary_ dnssec_binary_t key = { 0 };
+	_cleanup_binary_ dnssec_binary_t key = {0};
 	int r = dnssec_binary_alloc(&key, bits / CHAR_BIT);
 	if (r != DNSSEC_EOK) {
 		ERR2("failed to allocate memory");
@@ -888,7 +800,7 @@ int keymgr_generate_tsig(const char *tsig_name, const char *alg_name, int bits)
 		return knot_error_from_libdnssec(r);
 	}
 
-	_cleanup_binary_ dnssec_binary_t key_b64 = { 0 };
+	_cleanup_binary_ dnssec_binary_t key_b64 = {0};
 	r = dnssec_binary_to_base64(&key, &key_b64);
 	if (r != DNSSEC_EOK) {
 		ERR2("failed to convert the key to Base64");
@@ -940,7 +852,7 @@ int keymgr_get_key(kdnssec_ctx_t *ctx, const char *key_spec, knot_kasp_key_t **k
 
 		bool keyid_match = strncmp(candidate->id, key_spec, spec_len) == 0; // May be just a prefix.
 		bool keytag_match = can_be_keytag &&
-		                    dnssec_key_get_keytag(candidate->key) == keytag;
+				    dnssec_key_get_keytag(candidate->key) == keytag;
 
 		// Terminate if found exact key ID match.
 		if (keyid_match && !is_keytag && strlen(candidate->id) == spec_len) {
@@ -948,8 +860,8 @@ int keymgr_get_key(kdnssec_ctx_t *ctx, const char *key_spec, knot_kasp_key_t **k
 			break;
 		}
 		// Check for key ID prefix or tag match.
-		if ((is_keytag && keytag_match) || // Tag is prescribed.
-		    (is_id && keyid_match) ||   // Key ID is prescribed.
+		if ((is_keytag && keytag_match) ||				 // Tag is prescribed.
+		    (is_id && keyid_match) ||					 // Key ID is prescribed.
 		    ((!is_keytag && !is_id) && (keyid_match || keytag_match))) { // Nothing is prescribed.
 			if (*key == NULL) {
 				*key = candidate;
@@ -974,7 +886,7 @@ int keymgr_foreign_key_id(char *argv[], knot_lmdb_db_t *kaspdb, knot_dname_t **k
 	}
 	knot_dname_to_lower(*key_zone);
 
-	kdnssec_ctx_t kctx = { 0 };
+	kdnssec_ctx_t kctx = {0};
 	int ret = kdnssec_ctx_init(conf(), &kctx, *key_zone, kaspdb, NULL);
 	if (ret != KNOT_EOK) {
 		ERR2("failed to initialize zone %s (%s)", argv[0], knot_strerror(ret));
@@ -998,8 +910,8 @@ int keymgr_set_timing(knot_kasp_key_t *key, int argc, char *argv[])
 {
 	knot_kasp_key_timing_t temp = key->timing;
 	kdnssec_generate_flags_t flags = ((key->is_ksk ? DNSKEY_GENERATE_KSK : 0) |
-	                                  (key->is_zsk ? DNSKEY_GENERATE_ZSK : 0) |
-	                                  (key->is_for_later ? DNSKEY_GENERATE_FOR_LATER : 0));
+					  (key->is_zsk ? DNSKEY_GENERATE_ZSK : 0) |
+					  (key->is_for_later ? DNSKEY_GENERATE_FOR_LATER : 0));
 
 	if (genkeyargs(argc, argv, true, &flags, NULL, NULL, &temp, NULL)) {
 		int ret = check_timers(&temp);
@@ -1027,18 +939,17 @@ typedef struct {
 } timer_ctx_t;
 
 static const timer_ctx_t timers[] = {
-	{ "created",       offsetof(knot_kasp_key_timing_t, created) },
-	{ "pre-active",    offsetof(knot_kasp_key_timing_t, pre_active) },
-	{ "publish",       offsetof(knot_kasp_key_timing_t, publish) },
-	{ "ready",         offsetof(knot_kasp_key_timing_t, ready) },
-	{ "active",        offsetof(knot_kasp_key_timing_t, active) },
-	{ "retire-active", offsetof(knot_kasp_key_timing_t, retire_active) },
-	{ "retire",        offsetof(knot_kasp_key_timing_t, retire) },
-	{ "post-active",   offsetof(knot_kasp_key_timing_t, post_active) },
-	{ "revoke",        offsetof(knot_kasp_key_timing_t, revoke) },
-	{ "remove",        offsetof(knot_kasp_key_timing_t, remove) },
-	{ NULL }
-};
+    {"created", offsetof(knot_kasp_key_timing_t, created)},
+    {"pre-active", offsetof(knot_kasp_key_timing_t, pre_active)},
+    {"publish", offsetof(knot_kasp_key_timing_t, publish)},
+    {"ready", offsetof(knot_kasp_key_timing_t, ready)},
+    {"active", offsetof(knot_kasp_key_timing_t, active)},
+    {"retire-active", offsetof(knot_kasp_key_timing_t, retire_active)},
+    {"retire", offsetof(knot_kasp_key_timing_t, retire)},
+    {"post-active", offsetof(knot_kasp_key_timing_t, post_active)},
+    {"revoke", offsetof(knot_kasp_key_timing_t, revoke)},
+    {"remove", offsetof(knot_kasp_key_timing_t, remove)},
+    {NULL}};
 
 typedef struct {
 	const char *ks_name;
@@ -1049,19 +960,18 @@ typedef struct {
 
 #define KS_TYPE(info) (info->backend == KEYSTORE_BACKEND_PEM) ? "PEM" : "PKCS11"
 
-static void print_key_brief(const knot_kasp_key_t *key, key_info_t *info,
-                            keymgr_list_params_t *params)
+static void print_key_brief(const knot_kasp_key_t *key, key_info_t *info, keymgr_list_params_t *params)
 {
 	const bool c = params->color;
 
 	printf("%s %s%5u%s ",
-	       key->id, COL_BOLD(c), dnssec_key_get_keytag(key->key), COL_RST(c));
+	    key->id, COL_BOLD(c), dnssec_key_get_keytag(key->key), COL_RST(c));
 
 	printf("%s%s%s%s ",
-	       COL_BOLD(c),
-	       (key->is_ksk ? (key->is_zsk ? COL_YELW(c) : COL_RED(c)) : COL_GRN(c)),
-	       (key->is_ksk ? (key->is_zsk ? "CSK" : "KSK") : "ZSK"),
-	       COL_RST(c));
+	    COL_BOLD(c),
+	    (key->is_ksk ? (key->is_zsk ? COL_YELW(c) : COL_RED(c)) : COL_GRN(c)),
+	    (key->is_ksk ? (key->is_zsk ? "CSK" : "KSK") : "ZSK"),
+	    COL_RST(c));
 
 	uint8_t alg = dnssec_key_get_algorithm(key->key);
 	const knot_lookup_t *alg_info = knot_lookup_by_id(knot_dnssec_alg_names, alg);
@@ -1111,14 +1021,13 @@ static void print_key_brief(const knot_kasp_key_t *key, key_info_t *info,
 	printf("\n");
 }
 
-static void print_key_full(const knot_kasp_key_t *key, key_info_t *info,
-                           knot_time_print_t format)
+static void print_key_full(const knot_kasp_key_t *key, key_info_t *info, knot_time_print_t format)
 {
 	printf("%s ksk=%s zsk=%s tag=%05d algorithm=%-2d size=%-4u public-only=%s for-later=%s missing=%s",
-	       key->id, (key->is_ksk ? "yes" : "no "), (key->is_zsk ? "yes" : "no "),
-	       dnssec_key_get_keytag(key->key), (int)dnssec_key_get_algorithm(key->key),
-	       dnssec_key_get_size(key->key), (key->is_pub_only ? "yes" : "no "),
-	       (key->is_for_later ? "yes" : "no "), (info->missing ? "yes" : "no "));
+	    key->id, (key->is_ksk ? "yes" : "no "), (key->is_zsk ? "yes" : "no "),
+	    dnssec_key_get_keytag(key->key), (int)dnssec_key_get_algorithm(key->key),
+	    dnssec_key_get_size(key->key), (key->is_pub_only ? "yes" : "no "),
+	    (key->is_for_later ? "yes" : "no "), (info->missing ? "yes" : "no "));
 	if (info->ks_name != NULL) {
 		printf(" keystore=%s/%s", KS_TYPE(info), info->ks_name);
 	}
@@ -1132,22 +1041,21 @@ static void print_key_full(const knot_kasp_key_t *key, key_info_t *info,
 	printf("\n");
 }
 
-static void print_key_json(const knot_kasp_key_t *key, key_info_t *info,
-                           knot_time_print_t format, jsonw_t *w, const char *zone_name)
+static void print_key_json(const knot_kasp_key_t *key, key_info_t *info, knot_time_print_t format, jsonw_t *w, const char *zone_name)
 {
-	jsonw_str(w,   "zone", zone_name);
-	jsonw_str(w,   "id", key->id);
-	jsonw_bool(w,  "ksk", key->is_ksk);
-	jsonw_bool(w,  "zsk", key->is_zsk);
-	jsonw_int(w,   "tag", dnssec_key_get_keytag(key->key));
+	jsonw_str(w, "zone", zone_name);
+	jsonw_str(w, "id", key->id);
+	jsonw_bool(w, "ksk", key->is_ksk);
+	jsonw_bool(w, "zsk", key->is_zsk);
+	jsonw_int(w, "tag", dnssec_key_get_keytag(key->key));
 	jsonw_ulong(w, "algorithm", dnssec_key_get_algorithm(key->key));
-	jsonw_int(w,   "size", dnssec_key_get_size(key->key));
-	jsonw_bool(w,  "public-only", key->is_pub_only);
-	jsonw_bool(w,  "for-later", key->is_for_later);
-	jsonw_bool(w,  "missing", info->missing);
+	jsonw_int(w, "size", dnssec_key_get_size(key->key));
+	jsonw_bool(w, "public-only", key->is_pub_only);
+	jsonw_bool(w, "for-later", key->is_for_later);
+	jsonw_bool(w, "missing", info->missing);
 	if (info->ks_name != NULL) {
-	jsonw_str(w,   "keystore", info->ks_name);
-	jsonw_str(w,   "backend", KS_TYPE(info));
+		jsonw_str(w, "keystore", info->ks_name);
+		jsonw_str(w, "backend", KS_TYPE(info));
 	}
 
 	static char buf[100];
@@ -1177,10 +1085,10 @@ static int key_sort(const void *a, const void *b)
 
 static key_info_t key_missing(kdnssec_ctx_t *ctx, const knot_kasp_key_t *key)
 {
-	key_info_t out = { .ks_count = ctx->keystores[0].count };
+	key_info_t out = {.ks_count = ctx->keystores[0].count};
 	out.missing = !key->is_pub_only &&
-	              DNSSEC_EOK != kdnssec_load_private(ctx->keystores, key->id,
-	                                                 key->key, &out.ks_name, &out.backend);
+		      DNSSEC_EOK != kdnssec_load_private(ctx->keystores, key->id,
+					key->key, &out.ks_name, &out.backend);
 	return out;
 }
 
@@ -1248,7 +1156,7 @@ static int print_ds(const knot_dname_t *dname, const dnssec_binary_t *rdata)
 		return KNOT_ENOMEM;
 	}
 
-	uint16_t keytag   = wire_ctx_read_u16(&ctx);
+	uint16_t keytag = wire_ctx_read_u16(&ctx);
 	uint8_t algorithm = wire_ctx_read_u8(&ctx);
 	uint8_t digest_type = wire_ctx_read_u8(&ctx);
 
@@ -1265,9 +1173,10 @@ static int print_ds(const knot_dname_t *dname, const dnssec_binary_t *rdata)
 }
 
 static int create_and_print_ds(const knot_dname_t *zone_name,
-			       const dnssec_key_t *key, dnssec_key_digest_t digest)
+    const dnssec_key_t *key,
+    dnssec_key_digest_t digest)
 {
-	_cleanup_binary_ dnssec_binary_t rdata = { 0 };
+	_cleanup_binary_ dnssec_binary_t rdata = {0};
 	int r = dnssec_key_create_ds(key, digest, &rdata);
 	if (r != DNSSEC_EOK) {
 		return knot_error_from_libdnssec(r);
@@ -1279,10 +1188,9 @@ static int create_and_print_ds(const knot_dname_t *zone_name,
 int keymgr_generate_ds(const knot_dname_t *dname, const knot_kasp_key_t *key)
 {
 	static const dnssec_key_digest_t digests[] = {
-		DNSSEC_KEY_DIGEST_SHA256,
-		DNSSEC_KEY_DIGEST_SHA384,
-		0
-	};
+	    DNSSEC_KEY_DIGEST_SHA256,
+	    DNSSEC_KEY_DIGEST_SHA384,
+	    0};
 
 	int ret = KNOT_EOK;
 	for (int i = 0; digests[i] != 0 && ret == KNOT_EOK; i++) {
@@ -1304,7 +1212,7 @@ int keymgr_generate_dnskey(const knot_dname_t *dname, const knot_kasp_key_t *key
 	uint16_t flags = dnssec_key_get_flags(dnskey);
 	uint8_t algorithm = dnssec_key_get_algorithm(dnskey);
 
-	dnssec_binary_t pubkey = { 0 };
+	dnssec_binary_t pubkey = {0};
 	int ret = dnssec_key_get_pubkey(dnskey, &pubkey);
 	if (ret != DNSSEC_EOK) {
 		free(name);
@@ -1348,7 +1256,8 @@ int keymgr_list_zones(knot_lmdb_db_t *kaspdb, bool json)
 		}
 		jsonw_list(w, NULL);
 	}
-	WALK_LIST(node, zones) {
+	WALK_LIST(node, zones)
+	{
 		(void)knot_dname_to_str(name, node->d, sizeof(name));
 		if (json) {
 			jsonw_str(w, NULL, name);
