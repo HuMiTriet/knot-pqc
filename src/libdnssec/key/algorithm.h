@@ -9,6 +9,17 @@
 
 #include "libdnssec/key.h"
 
+#ifdef ENABLE_OQS
+/*!
+ * Our own PQC PK algorithm IDs, numerically matching GnuTLS 3.8.11 values
+ * but defined here so the code compiles with older GnuTLS (e.g. 3.8.3)
+ * that lacks the GNUTLS_PK_MLDSA* symbols.
+ */
+#define OQS_PK_MLDSA44  15
+#define OQS_PK_MLDSA65  16
+#define OQS_PK_MLDSA87  17
+#endif /* ENABLE_OQS */
+
 /*!
  * Convert DNSKEY algorithm identifier to GnuTLS identifier.
  *
@@ -19,5 +30,9 @@
 gnutls_pk_algorithm_t algorithm_to_gnutls(dnssec_key_algorithm_t dnssec);
 
 #ifdef ENABLE_OQS
-bool supported_pqc_algorithm(gnutls_pk_algorithm_t algo);
+/*!
+ * Return true if the given OQS_PK_* constant is a supported PQC algorithm.
+ * Takes an int (not gnutls_pk_algorithm_t) to avoid dependency on GnuTLS 3.8.11.
+ */
+bool supported_pqc_algorithm(int algo);
 #endif // ENABLE_OQS

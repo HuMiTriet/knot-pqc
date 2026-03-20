@@ -268,12 +268,18 @@ int dnssec_sign_new(dnssec_sign_ctx_t **ctx_ptr, const dnssec_key_t *key)
 	ctx->sign_algorithm = algo_dnssec2gnutls((dnssec_key_algorithm_t)algo_raw);
 
 #ifdef ENABLE_OQS
-	gnutls_pk_algorithm_t pk_alg = gnutls_sign_get_pk_algorithm(ctx->sign_algorithm);
-	if (supported_pqc_algorithm(pk_alg)) {
-		const char* alg_name = gnutls_pk_algorithm_get_name(pk_alg);
-		if (alg_name) {
-			ctx->pqc_ctx = OQS_SIG_new(alg_name);
-		}
+	// Determine OQS algorithm name directly from the DNSSEC algorithm byte —
+	// do NOT use gnutls_sign_get_pk_algorithm / gnutls_pk_algorithm_get_name
+	// since those identifiers only exist in GnuTLS >= 3.8.11.
+	const char *oqs_alg_name = NULL;
+	switch ((dnssec_key_algorithm_t)algo_raw) {
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44: oqs_alg_name = OQS_SIG_alg_ml_dsa_44; break;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65: oqs_alg_name = OQS_SIG_alg_ml_dsa_65; break;
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87: oqs_alg_name = OQS_SIG_alg_ml_dsa_87; break;
+	default: break;
+	}
+	if (oqs_alg_name) {
+		ctx->pqc_ctx = OQS_SIG_new(oqs_alg_name);
 		if (!ctx->pqc_ctx) {
 			free(ctx);
 			return DNSSEC_INVALID_KEY_ALGORITHM;
@@ -285,6 +291,7 @@ int dnssec_sign_new(dnssec_sign_ctx_t **ctx_ptr, const dnssec_key_t *key)
 
 	int result = dnssec_sign_init(ctx);
 	if (result != DNSSEC_EOK) {
+
 #ifdef ENABLE_OQS
 		if (ctx->pqc_ctx) {
 			OQS_SIG_free(ctx->pqc_ctx);

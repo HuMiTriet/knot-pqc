@@ -123,11 +123,11 @@ gnutls_pk_algorithm_t algorithm_to_gnutls(dnssec_key_algorithm_t dnssec)
 #endif
 #ifdef ENABLE_OQS
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
-		return GNUTLS_PK_MLDSA44;
+		return (gnutls_pk_algorithm_t)OQS_PK_MLDSA44;
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
-		return GNUTLS_PK_MLDSA65;
+		return (gnutls_pk_algorithm_t)OQS_PK_MLDSA65;
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
-		return GNUTLS_PK_MLDSA87;
+		return (gnutls_pk_algorithm_t)OQS_PK_MLDSA87;
 #endif /* ifdef MACRO */
 
 	default:
@@ -138,11 +138,11 @@ gnutls_pk_algorithm_t algorithm_to_gnutls(dnssec_key_algorithm_t dnssec)
 
 
 #ifdef ENABLE_OQS
-bool supported_pqc_algorithm(const gnutls_pk_algorithm_t algo) {
+bool supported_pqc_algorithm(int algo) {
 	switch (algo) {
-	case GNUTLS_PK_MLDSA44:
-	case GNUTLS_PK_MLDSA65:
-	case GNUTLS_PK_MLDSA87:
+	case OQS_PK_MLDSA44:
+	case OQS_PK_MLDSA65:
+	case OQS_PK_MLDSA87:
 		return true;
 	default:
 		return false;
