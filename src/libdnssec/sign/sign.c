@@ -227,11 +227,11 @@ static gnutls_sign_algorithm_t algo_dnssec2gnutls(dnssec_key_algorithm_t algorit
 #endif
 #ifdef ENABLE_OQS
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
-		return GNUTLS_SIGN_MLDSA44;
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
-		return GNUTLS_SIGN_MLDSA65;
 	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
-		return GNUTLS_SIGN_MLDSA87;
+		// GnuTLS < 3.8.11 has no GNUTLS_SIGN_MLDSA* — return UNKNOWN
+		// and let the PQC-aware callers handle these algorithms directly.
+		return GNUTLS_SIGN_UNKNOWN;
 #endif
 	default:
 		return GNUTLS_SIGN_UNKNOWN;
@@ -243,6 +243,19 @@ static gnutls_sign_algorithm_t algo_dnssec2gnutls(dnssec_key_algorithm_t algorit
 _public_
 bool dnssec_algorithm_key_support(dnssec_key_algorithm_t algorithm)
 {
+#ifdef ENABLE_OQS
+	// PQC algorithms are handled directly via liboqs, not GnuTLS.
+	// Don't call gnutls_sign_is_secure() for them — it will return false
+	// on GnuTLS < 3.8.11 which lacks GNUTLS_SIGN_MLDSA*.
+	switch (algorithm) {
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_44:
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_65:
+	case DNSSEC_KEY_ALGORITHM_ML_DSA_87:
+		return true;
+	default:
+		break;
+	}
+#endif
 	gnutls_sign_algorithm_t a = algo_dnssec2gnutls(algorithm);
 	return a != GNUTLS_SIGN_UNKNOWN && gnutls_sign_is_secure(a);
 }
