@@ -8,7 +8,7 @@ libknotus_la_CPPFLAGS = $(embedded_libngtcp2_CFLAGS) \
                         $(AM_CPPFLAGS) $(CFLAG_VISIBILITY) $(gnutls_CFLAGS) \
                         $(libedit_CFLAGS) $(libidn2_CFLAGS) $(libidn_CFLAGS) \
                         $(libkqueue_CFLAGS) $(libnghttp2_CFLAGS) $(libngtcp2_CFLAGS) \
-                        $(lmdb_CFLAGS)
+                        $(lmdb_CFLAGS) $(liboqs_CFLAGS)
 libknotus_la_LDFLAGS  = $(AM_LDFLAGS) $(LDFLAG_EXCLUDE_LIBS)
 libknotus_la_LIBADD   = $(libidn2_LIBS) $(libidn_LIBS) $(libnghttp2_LIBS) $(libngtcp2_LIBS)
 libknotus_LIBS        = libknotus.la libknot.la libdnssec.la $(libcontrib_LIBS) \

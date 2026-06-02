@@ -70,7 +70,7 @@ Compile the source code:
 ```bash
 cd knot-dns
 autoreconf -if
-./configure
+./configure --enable-oqs
 make
 ```
 
