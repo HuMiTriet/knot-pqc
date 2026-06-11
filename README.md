@@ -62,13 +62,14 @@ enabled.
 
 Get the source code:
 ```bash
-git clone https://gitlab.nic.cz/knot/knot-dns.git
+git clone https://github.com/HuMiTriet/knot-pqc.git
 ```
 Or extract source package to knot-dns directory.
 
 Compile the source code:
 ```bash
 cd knot-dns
+sudo apt install -y autoconf automake libtool  pkg-config
 autoreconf -if
 ./configure --enable-oqs
 make
